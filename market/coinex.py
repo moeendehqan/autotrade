@@ -22,7 +22,7 @@ def sign_request(method: str, request_path: str, body: str = "", timestamp: str 
     """ساخت signature برای HTTP"""
     if timestamp is None:
         timestamp = get_timestamp()
-    prepared_str = method.upper() + request_path + body + timestamp
+    prepared_str = method.upper()+"/v2"+ request_path + body + timestamp
     signed_str = hmac.new(
         SECRET_KEY.encode("latin-1"),
         msg=prepared_str.encode("latin-1"),
@@ -142,7 +142,7 @@ class CoinExHTTPClient:
         price: str = None,
         client_id: str = None,
         is_hide: bool = False,
-        stp_mode: str = None
+        stp_mode: str = 'ct'
     ):
         """
         ثبت سفارش در Futures
@@ -233,6 +233,9 @@ class CoinExHTTPClient:
             "order_id": order_id
         }
         return self._request("GET", "/futures/order-status", params=params)
+
+    def get_futures_balance(self):
+        return self._request("GET", "/assets/futures/balance")
 
     # --- متد اصلاح شده برای دریافت سفارشات Futures که هنوز پر نشده‌اند ---
     def get_futures_pending_orders(self, market: str = None, side: str = None, page: int = 1, limit: int = 10):
@@ -422,7 +425,7 @@ class CoinExHTTPClient:
 
 
     # --- جدید: Cancel All Futures Orders ---
-    def cancel_all_futures_orders(self, market: str, market_type: str, side: str = None):
+    def cancel_all_orders(self, market: str, side: str = None):
         """
         لغو تمام سفارشات در یک مارکت Futures
         :param market: نام مارکت مثل "CETUSDT"
@@ -431,7 +434,7 @@ class CoinExHTTPClient:
         """
         data = {
             "market": market,
-            "market_type": market_type
+            "market_type": "FUTURES"
         }
         if side is not None:
             data["side"] = side
