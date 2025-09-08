@@ -297,25 +297,55 @@ def update_futures_depth():
                     "sell": sell,
                     "update_at":timezone.now()
                 }
-)
+                )
+            print(i)
+            time.sleep(1)
+
 
         print(f'update Analize Depth')
         time.sleep(sleep)
 
 
 def update_order():
-    sleep = 10
+    sleep = 30
     from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth
 
     while True:
+        for i in markets:
+            pending_orders = http_client.cancel_all_orders(market=i.market)
+
         analize = AnalizeDepth.objects.filter(Q(buy=True) | Q(sell=True)).order_by('-create_at')
+
+        sell_count = analize.filter(sell=True).count()
+        buy_count = analize.filter(buy=True).count()
+        allow_sell = sell_count>buy_count
+        allow_buy = buy_count>sell_count
+        if allow_sell:
+            analize = analize.filter(sell=True)
+            side = "sell"
+        else:
+            analize = analize.filter(buy=True)
+            side = "buy"
+
+        balance = http_client.get_futures_balance()['data'][0]['available']
+        balance = float(balance)
+        print(balance)
+        balance_per_order = balance / buy_count if allow_buy else balance / sell_count
+        balance_per_order = balance_per_order * 0.95
+        
+
+        print(balance)
         if not analize.exists():
             continue
         for i in analize:
-            pending_orders = http_client.get_futures_pending_orders(market=i.market)
-            print("--------------------------------")
-            print(i.market)
+            amount = balance_per_order / i.buy_price
+            order = http_client.place_futures_order(market=i.market,side=side,type_="limit",amount=str(amount),price=str(i.buy_price))
+
+            
+
             print(pending_orders)
+            time.sleep(100)
             break
+
         time.sleep(sleep)
         
