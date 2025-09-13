@@ -44,7 +44,6 @@ def update_market_status():
     while True:
         for i in markets:
             status = http_client.get_market_status(i)
-            print('status',status)
 
             status = status['data'][0]
 
@@ -86,13 +85,13 @@ def update_futures_depth():
     sleep = 45
     delay = 48
     time.sleep(delay)
-    SHOCK_THRESHOLD_1 = 0.0055
-    SHOCK_THRESHOLD_2 = 0.0072
-    CUM_SHOCK_THRESHOLD_1 = 0.0010
-    CUM_SHOCK_THRESHOLD_2 = 0.0140
+    SHOCK_THRESHOLD_1 = 0.0067
+    SHOCK_THRESHOLD_2 = 0.0081
+    CUM_SHOCK_THRESHOLD_1 = 0.010
+    CUM_SHOCK_THRESHOLD_2 = 0.018
     LIMIT = 50
-    MIN_PROFIT = 0.3 / 100
-    MAX_PROFIT = 0.02
+    MIN_PROFIT = 0.6 / 100
+    MAX_PROFIT = 3/100
     MAX_LOSS = 1 / 100
     BORDER_OFFSET = 0.05 / 100
     MAX_TRY_SHOCK = 5
@@ -332,6 +331,7 @@ def update_order():
     sleep = 60
     delay = 5
     from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth, Order
+
     time.sleep(delay)
 
     while True:
@@ -348,21 +348,11 @@ def update_order():
             print("no analize")
             continue
 
-        sell_count = analize.filter(sell=True).count()
-        buy_count = analize.filter(buy=True).count()
-        allow_sell = sell_count>buy_count
-        allow_buy = buy_count>sell_count
-        if allow_sell:
-            analize = analize.filter(sell=True)
-            analize = analize.order_by('-sel_power_shock')
-            side = "sell"
-        else:
-            analize = analize.order_by('-buy_power_shock')
-            analize = analize.filter(buy=True)
-            side = "buy"
+        count = analize.count()
+        analize = analize.order_by('-buy_power_shock','-sel_power_shock')
         balance = http_client.get_futures_balance()['data'][0]['available']
         balance = float(balance)
-        balance_per_order = balance / (buy_count if allow_buy else sell_count)
+        balance_per_order = balance / count
         balance_per_order = balance_per_order
 
 
@@ -371,14 +361,15 @@ def update_order():
         for i in analize:
             time.sleep(random.randint(50, 100)/10)
             min_amount = MarketStatus.objects.filter(market=i.market).order_by('-create_at').values_list('min_amount', flat=True).first()
-            price = i.buy_price if side == "buy" else i.sell_price
+            price = i.buy_price if i.buy else i.sell_price
             amount = (balance_per_order / price)*0.98
+            side = "buy" if i.buy else "sell"
 
             amount = min_amount
             if amount < min_amount:
                 continue
             amount = min_amount
-            get_futures_pending_orders = http_client.get_futures_pending_orders(market=i.market,side=side)
+            get_futures_pending_orders = http_client.get_futures_pending_orders(market=i.market,side=side,limit=10)
             position = http_client.get_futures_position(market=i.market)
             if len(position['data'])>0:
                 continue
@@ -387,8 +378,12 @@ def update_order():
                 continue
             order = http_client.place_futures_order(market=i.market,side=side,type_="limit",amount=str(amount),price=str(price))
             if order['code']!= 0:
+                print('-'*10,'error order','-'*10)
+                print(order)
+                print(i,side,price,amount)
                 continue
-            
+
+            print('new order',i.market)
 
             Order.objects.update_or_create(
                 market=i.market,
@@ -428,7 +423,6 @@ def modify_position():
             if order is None:
                 http_client.close_futures_position(i['market'])
                 print('close position',i)
-                print('w'*150)
                 continue
 
             if i['side']=='long' and order.side=='sell':
