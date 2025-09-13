@@ -1,18 +1,24 @@
 import time
+from turtle import position
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from autotrade.settings import MARKETS
 from .coinex import CoinExHTTPClient
 import pandas as pd
-
+import random
 markets = settings.MARKETS
 http_client = CoinExHTTPClient()
 
+delay_by_record = 1/10
 def update_funding_rate():
     sleep = 1 * 60 * 60
+    delay = 0
+
+    time.sleep(delay)
     from .models import FundingRate
     while True:
+
         for market in markets:
             funding_rate = http_client.get_funding_rate(market)
             funding_rate = funding_rate['data'][0]
@@ -26,14 +32,20 @@ def update_funding_rate():
                 min_funding_rate = funding_rate['min_funding_rate'],
                 next_funding_time = funding_rate['next_funding_time'],
             )
+            time.sleep(delay_by_record)
+
         time.sleep(sleep)
 
 def update_market_status():
-    sleep = 60 * 60 * 24
+    sleep = 60 * 60 
+    delay = 14
+    time.sleep(delay)
     from .models import MarketStatus
     while True:
         for i in markets:
             status = http_client.get_market_status(i)
+            print('status',status)
+
             status = status['data'][0]
 
             MarketStatus.objects.create(
@@ -42,10 +54,14 @@ def update_market_status():
                 taker_fee_rate = status['taker_fee_rate'],
                 min_amount = status['min_amount'],
             )
+            time.sleep(delay_by_record)
+
         time.sleep(sleep)
 
 def update_market_ticker():
     sleep = 60 * 5
+    delay = 20
+    time.sleep(delay)
     from .models import MarketTicker
     while True:
         for i in markets:
@@ -63,10 +79,13 @@ def update_market_ticker():
                 value = market_ticker['value'],
                 volume = market_ticker['volume'],
             )
+            time.sleep(delay_by_record)
         time.sleep(sleep)
 
 def update_futures_depth():
-    sleep = 30
+    sleep = 45
+    delay = 48
+    time.sleep(delay)
     SHOCK_THRESHOLD_1 = 0.0055
     SHOCK_THRESHOLD_2 = 0.0072
     CUM_SHOCK_THRESHOLD_1 = 0.0010
@@ -74,7 +93,7 @@ def update_futures_depth():
     LIMIT = 50
     MIN_PROFIT = 0.3 / 100
     MAX_PROFIT = 0.02
-    MAX_LOSS = 0.6 / 100
+    MAX_LOSS = 1 / 100
     BORDER_OFFSET = 0.05 / 100
     MAX_TRY_SHOCK = 5
     from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth
@@ -264,57 +283,70 @@ def update_futures_depth():
             else:
                 buy = open_buy
                 sell = open_sell
+            done = False
+            while done == False:
+                try:
+                    AnalizeDepth.objects.update_or_create(
+                        market=i,
+                        defaults={
+                            "support_main": s2,
+                            "support_second": s1,
+                            "resistance_main": r2,
+                            "resistance_second": r1,
+                            "buy_price": buy_price,
+                            "buy_target": buy_target,
+                            "min_buy_target": min_buy_target,
+                            "buy_stop_loss": buy_stop_loss,
+                            "open_buy": open_buy,
+                            "sell_price": sell_price,
+                            "min_sell_target": min_sell_target,
+                            "sell_target": sell_target,
+                            "sell_stop_loss": sell_stop_loss,
+                            "open_sell": open_sell,
+                            "last_price": last_price,
+                            "fee": fee,
+                            "sel_power_shock": sel_power_shock,
+                            "sel_power_cum_shock": sel_power_cum_shock,
+                            "buy_power_shock": buy_power_shock,
+                            "buy_power_cum_shock": buy_power_cum_shock,
+                            "buy_rate_profit": buy_rate_profit,
+                            "buy_rr": buy_rr,
+                            "sell_rate_profit": sell_rate_profit,
+                            "sell_rr": sell_rr,
+                            "buy": buy,
+                            "sell": sell,
+                            "update_at":timezone.now()
+                        }
+                        )
+                    done = True
+                except Exception as e:
+                    time.sleep(delay_by_record)
+                    done = False
+                    continue
 
 
-            AnalizeDepth.objects.update_or_create(
-                market=i,
-                defaults={
-                    "support_main": s2,
-                    "support_second": s1,
-                    "resistance_main": r2,
-                    "resistance_second": r1,
-                    "buy_price": buy_price,
-                    "buy_target": buy_target,
-                    "min_buy_target": min_buy_target,
-                    "buy_stop_loss": buy_stop_loss,
-                    "open_buy": open_buy,
-                    "sell_price": sell_price,
-                    "min_sell_target": min_sell_target,
-                    "sell_target": sell_target,
-                    "sell_stop_loss": sell_stop_loss,
-                    "open_sell": open_sell,
-                    "last_price": last_price,
-                    "fee": fee,
-                    "sel_power_shock": sel_power_shock,
-                    "sel_power_cum_shock": sel_power_cum_shock,
-                    "buy_power_shock": buy_power_shock,
-                    "buy_power_cum_shock": buy_power_cum_shock,
-                    "buy_rate_profit": buy_rate_profit,
-                    "buy_rr": buy_rr,
-                    "sell_rate_profit": sell_rate_profit,
-                    "sell_rr": sell_rr,
-                    "buy": buy,
-                    "sell": sell,
-                    "update_at":timezone.now()
-                }
-                )
-            print(i)
-            time.sleep(1)
-
-
-        print(f'update Analize Depth')
         time.sleep(sleep)
 
 
 def update_order():
-    sleep = 30
-    from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth
+    sleep = 60
+    delay = 5
+    from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth, Order
+    time.sleep(delay)
 
     while True:
         for i in markets:
-            pending_orders = http_client.cancel_all_orders(market=i.market)
+            try:
+                pending_orders = http_client.cancel_all_orders(market=i)
+            except Exception as e:
+                time.sleep(delay_by_record)
+                continue
 
         analize = AnalizeDepth.objects.filter(Q(buy=True) | Q(sell=True)).order_by('-create_at')
+
+        if not analize.exists():
+            print("no analize")
+            continue
 
         sell_count = analize.filter(sell=True).count()
         buy_count = analize.filter(buy=True).count()
@@ -322,30 +354,105 @@ def update_order():
         allow_buy = buy_count>sell_count
         if allow_sell:
             analize = analize.filter(sell=True)
+            analize = analize.order_by('-sel_power_shock')
             side = "sell"
         else:
+            analize = analize.order_by('-buy_power_shock')
             analize = analize.filter(buy=True)
             side = "buy"
-
         balance = http_client.get_futures_balance()['data'][0]['available']
         balance = float(balance)
-        print(balance)
-        balance_per_order = balance / buy_count if allow_buy else balance / sell_count
-        balance_per_order = balance_per_order * 0.95
+        balance_per_order = balance / (buy_count if allow_buy else sell_count)
+        balance_per_order = balance_per_order
+
+
         
 
-        print(balance)
-        if not analize.exists():
-            continue
         for i in analize:
-            amount = balance_per_order / i.buy_price
-            order = http_client.place_futures_order(market=i.market,side=side,type_="limit",amount=str(amount),price=str(i.buy_price))
+            time.sleep(random.randint(50, 100)/10)
+            min_amount = MarketStatus.objects.filter(market=i.market).order_by('-create_at').values_list('min_amount', flat=True).first()
+            price = i.buy_price if side == "buy" else i.sell_price
+            amount = (balance_per_order / price)*0.98
 
+            amount = min_amount
+            if amount < min_amount:
+                continue
+            amount = min_amount
+            get_futures_pending_orders = http_client.get_futures_pending_orders(market=i.market,side=side)
+            position = http_client.get_futures_position(market=i.market)
+            if len(position['data'])>0:
+                continue
+
+            if len(get_futures_pending_orders['data'])>0:
+                continue
+            order = http_client.place_futures_order(market=i.market,side=side,type_="limit",amount=str(amount),price=str(price))
+            if order['code']!= 0:
+                continue
             
 
-            print(pending_orders)
-            time.sleep(100)
-            break
+            Order.objects.update_or_create(
+                market=i.market,
+                defaults={
+                "price":price,
+                "stop_loss":i.buy_stop_loss if side == "buy" else i.sell_stop_loss,
+                "target":i.buy_target if side == "buy" else i.sell_target,
+                "amount":amount,
+                "side":side,
+                "client_id":"",
+                "order_id":order['data']['order_id'],
+                "fee":order['data']['fee'],
+                "realized_pnl":order['data']['realized_pnl'],
+                "status":'pending',
+                }
+            )
+
 
         time.sleep(sleep)
+    
+
+
+def modify_position():
+    sleep = 20
+    delay = 10
+    from .models import Order
+    time.sleep(delay)
+    while True:
+        time.sleep(sleep)
+        position = http_client.get_futures_position()
+        position = position['data']
+        if len(position) == 0:
+            print('no position')
+            continue
+        for i in position:
+            order = Order.objects.filter(market=i['market']).order_by('-created_at').first()
+            if order is None:
+                http_client.close_futures_position(i['market'])
+                print('close position',i)
+                print('w'*150)
+                continue
+
+            if i['side']=='long' and order.side=='sell':
+                http_client.close_futures_position(i['market'])
+                print('close position',i)
+                continue
+            if i['side']=='short' and order.side=='buy':
+                http_client.close_futures_position(i['market'])
+                print('close position',i)
+                continue
+            if i['stop_loss_price']=='0':
+                http_client.set_stop_loss_futures_position(i['market'],order.stop_loss)
+                print('set stop loss',i)
+            if i['take_profit_price']=='0':
+                http_client.set_take_profit_futures_position(i['market'],order.target)
+                print('set take profit',i)
+            if i['leverage'] != '3':
+                http_client.set_leverage_futures_position(i['market'],'3')
+                print('set leverage',i)
+            if i['margin_mode'] == 'cross':
+                http_client.set_leverage_futures_position(i['market'],'3')
+                print('set margin mode',i)
+
+
+
         
+    

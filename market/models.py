@@ -128,4 +128,4 @@ class Order(models.Model):
     realized_pnl = models.FloatField()
     status = models.CharField(max_length=100)
     def __str__(self):
-        return f"{self.broker} {self.market} {self.created_at}"
+        return f"{self.broker} {self.market} {self.created_at} {self.side}"

@@ -135,7 +135,6 @@ class CoinExHTTPClient:
     def place_futures_order(
         self,
         market: str,
-        market_type: str,
         side: str,
         type_: str,
         amount: str,
@@ -158,7 +157,7 @@ class CoinExHTTPClient:
         """
         data = {
             "market": market,
-            "market_type": market_type,
+            "market_type": "FUTURES",
             "side": side,
             "type": type_,
             "amount": amount,
@@ -172,6 +171,46 @@ class CoinExHTTPClient:
             data["stp_mode"] = stp_mode
 
         return self._request("POST", "/futures/order", data=data)
+
+    def place_spot_order(
+        self,
+        market: str,
+        side: str,
+        type_: str,
+        amount: str,
+        price: str = None,
+        client_id: str = None,
+        is_hide: bool = False,
+        stp_mode: str = 'ct'
+    ):
+        """
+        ثبت سفارش در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        :param market_type: نوع مارکت ("FUTURES")
+        :param side: نوع سفارش ("buy" یا "sell")
+        :param type_: نوع سفارش ("limit" یا "market")
+        :param amount: مقدار سفارش
+        :param price: قیمت سفارش (برای limit الزامی)
+        :param client_id: شناسه دلخواه سفارش
+        :param is_hide: مخفی کردن سفارش در عمق بازار
+        :param stp_mode: حالت محافظت از خود معامله (ct, cm, both)
+        """
+        data = {
+            "market": market,
+            "market_type": "SPOT",
+            "side": side,
+            "type": type_,
+            "amount": amount,
+            "is_hide": is_hide
+        }
+        if price is not None:
+            data["price"] = price
+        if client_id is not None:
+            data["client_id"] = client_id
+        if stp_mode is not None:
+            data["stp_mode"] = stp_mode
+
+        return self._request("POST", "/spot/order", data=data)
 
 
     # --- جدید: Place Futures Stop Order ---
@@ -236,6 +275,8 @@ class CoinExHTTPClient:
 
     def get_futures_balance(self):
         return self._request("GET", "/assets/futures/balance")
+    def get_spot_balance(self):
+        return self._request("GET", "/assets/spot/balance")
 
     # --- متد اصلاح شده برای دریافت سفارشات Futures که هنوز پر نشده‌اند ---
     def get_futures_pending_orders(self, market: str = None, side: str = None, page: int = 1, limit: int = 10):
@@ -440,3 +481,71 @@ class CoinExHTTPClient:
             data["side"] = side
 
         return self._request("POST", "/futures/cancel-all-order", data=data)
+
+
+    def get_futures_position(self,market: str = None):
+        """
+        دریافت موقعیت در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        """
+        params = {
+            "market_type": "FUTURES",
+            "page":1,
+            "limit":1000
+        }
+        if market is not None:
+            params["market"] = market
+        return self._request("GET", "/futures/pending-position", params=params)
+    
+    def set_stop_loss_futures_position(self, market: str, stop_loss_price: str):
+        """
+        تنظیم حد ضرر در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        :param stop_loss_price: حد ضرر
+        """
+        data = {
+            "market": market,
+            "market_type": "FUTURES",
+            "stop_loss_type":"latest_price",
+            "stop_loss_price": stop_loss_price
+        }
+        return self._request("POST", "/futures/set-position-stop-loss", data=data)
+    def set_take_profit_futures_position(self, market: str, take_profit_price: str):
+        """
+        تنظیم حد ضرر در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        :param take_profit_price: حد ضرر
+        """
+        data = {
+            "market": market,
+            "market_type": "FUTURES",
+            "take_profit_type":"latest_price",
+            "take_profit_price": take_profit_price
+        }
+        return self._request("POST", "/futures/set-position-take-profit", data=data)
+
+    def close_futures_position(self, market: str):
+        """
+        لغو موقعیت در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        """
+        data = {
+            "market": market,
+            "market_type": "FUTURES",
+            "type":"market",
+        }
+        return self._request("POST", "/futures/close-position", data=data)
+    
+    def set_leverage_futures_position(self, market: str, leverage: str):
+        """
+        تنظیم لورژه در Futures
+        :param market: نام مارکت مثل "CETUSDT"
+        :param leverage: لورژه
+        """
+        data = {
+            "market": market,
+            "market_type": "FUTURES",
+            'margin_mode':'isolated',
+            "leverage": leverage
+        }
+        return self._request("POST", "/futures/adjust-position-leverage", data=data)
