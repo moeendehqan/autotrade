@@ -1,6 +1,6 @@
 # market/admin.py
 from django.contrib import admin
-from .models import AnalizeDepth, MarketTicker, MarketStatus, FundingRate, Order
+from .models import AnalizeDepth, MarketTicker, MarketStatus, FundingRate, Order, OrderBook
 from .forms import AnalizeDepthForm
 @admin.register(AnalizeDepth)
 class AnalizeDepthAdmin(admin.ModelAdmin):
@@ -102,6 +102,13 @@ class FundingRateAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     readonly_fields = ("created_at",)
 
+@admin.register(OrderBook)
+class OrderBookAdmin(admin.ModelAdmin):
+    list_display = (
+        "broker", "market", "side", "price", "volume", "volume_24h", "cum_volume_24h", "log_cum_volume_24h", "weight", "distance", "datetime", "create_at"
+    )
+    list_filter = ("broker", "market", "side", "datetime", "create_at")
+    search_fields = ("broker", "market", "side", "datetime", "create_at")
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):

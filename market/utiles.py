@@ -7,8 +7,27 @@ from autotrade.settings import MARKETS
 from .coinex import CoinExHTTPClient
 import pandas as pd
 import random
+import math
 markets = settings.MARKETS
 http_client = CoinExHTTPClient()
+
+
+LEVERAGE = 3
+STD_X_LINE_1 = 2
+STD_X_LINE_2 = 3
+
+
+SHOCK_THRESHOLD_1 = 0.8 / 100
+SHOCK_THRESHOLD_2 = 1.0 / 100
+CUM_SHOCK_THRESHOLD_1 = 0.15 / 100
+CUM_SHOCK_THRESHOLD_2 = 0.25 / 100
+LIMIT = 50
+MIN_PROFIT = 1 / 100
+MAX_PROFIT = 3/100
+MAX_LOSS = 0.8 / 100
+BORDER_OFFSET = 0.05 / 100
+MAX_TRY_SHOCK = 10
+
 
 delay_by_record = 1/10
 def update_funding_rate():
@@ -81,21 +100,13 @@ def update_market_ticker():
             time.sleep(delay_by_record)
         time.sleep(sleep)
 
+
+
 def update_futures_depth():
-    sleep = 45
-    delay = 48
+    sleep = 30
+    delay = 5
     time.sleep(delay)
-    SHOCK_THRESHOLD_1 = 0.0067
-    SHOCK_THRESHOLD_2 = 0.0081
-    CUM_SHOCK_THRESHOLD_1 = 0.010
-    CUM_SHOCK_THRESHOLD_2 = 0.018
-    LIMIT = 50
-    MIN_PROFIT = 0.6 / 100
-    MAX_PROFIT = 3/100
-    MAX_LOSS = 1 / 100
-    BORDER_OFFSET = 0.05 / 100
-    MAX_TRY_SHOCK = 5
-    from .models import MarketTicker, MarketStatus, FundingRate, AnalizeDepth
+    from .models import MarketTicker, OrderBook
     
     def set_INTERVAL(last_price):
         scale = last_price * (1 / 10000)
@@ -106,226 +117,97 @@ def update_futures_depth():
             if clc <= 1:
                 return format(s, "f").rstrip("0").rstrip(".")
         return format(scale_list[-1], "f").rstrip("0").rstrip(".")
-
-
-
-
-
-    def find_support(df):
-        SHOCK_THRESHOLD_1_try = 1
-        s1 = df
-        while True:
-            SHOCK_THRESHOLD_1_EFF =SHOCK_THRESHOLD_1 * (1 - (SHOCK_THRESHOLD_1_try / 50)) if SHOCK_THRESHOLD_1_try > 1 else  SHOCK_THRESHOLD_1
-            s1 = df[df['volume/24h'] >SHOCK_THRESHOLD_1_EFF]
-            if SHOCK_THRESHOLD_1_try>MAX_TRY_SHOCK or len(s1) == 0:
-                s1 = df[df['price'] == df['price'].max()]
-                break
-            if len(s1)<len(df):
-                break
-            SHOCK_THRESHOLD_1_try += 1
-
-        CUM_SHOCK_THRESHOLD_1_try = 1
-        while len(s1)>0:
-            CUM_SHOCK_THRESHOLD_1_EFF = SHOCK_THRESHOLD_1 * (1 - (SHOCK_THRESHOLD_1_try / 50)) if CUM_SHOCK_THRESHOLD_1_try > 1 else CUM_SHOCK_THRESHOLD_1
-            s1 = df[df['cum-volume/24h'] >CUM_SHOCK_THRESHOLD_1_EFF]
-            if SHOCK_THRESHOLD_1_try>MAX_TRY_SHOCK or len(s1) == 0:
-                s1 = df[df['price'] == df['price'].min()]
-                break
-            if len(s1)<len(df):
-                break
-            SHOCK_THRESHOLD_1_try += 1
-
-        s2 = df[df['volume/24h'] >SHOCK_THRESHOLD_2]
-        s2 = s2[s2['cum-volume/24h'] >CUM_SHOCK_THRESHOLD_2]
-
-        power_shock = 0
-        power_cum_shock = 0
-        if len(s1) == 0:
-            s1 = df[df['price'] == df['price'].min()]
-        s1 = float(s1['price'].max())
-        if len(s2) == 0:
-            return s1 , 0, power_shock, power_cum_shock
-        s2_ = s2[s2['price']== s2['price'].max()]
-        s2 = float(s2_['price'].max())
-        power_shock = float(s2_['volume/24h'].max())
-        power_cum_shock = float(s2_['cum-volume/24h'].max())
-        return s1 , s2, power_shock, power_cum_shock
-
-    def find_resistance(df):
-        SHOCK_THRESHOLD_1_try = 1
-        r1 = df
-        while len(r1)>0:
-            SHOCK_THRESHOLD_1_EFF =SHOCK_THRESHOLD_1 * (1 - (SHOCK_THRESHOLD_1_try / 50)) if SHOCK_THRESHOLD_1_try > 1 else  SHOCK_THRESHOLD_1
-            r1 = df[df['volume/24h'] >SHOCK_THRESHOLD_1_EFF]
-            if SHOCK_THRESHOLD_1_try>MAX_TRY_SHOCK or len(r1) == 0:
-                r1 = df[df['price'] == df['price'].max()]
-                break
-            if len(r1)<len(df):
-                break
-            SHOCK_THRESHOLD_1_try += 1
-
-        CUM_SHOCK_THRESHOLD_1_try = 1
-        while len(r1)>0:
-            CUM_SHOCK_THRESHOLD_1_EFF = SHOCK_THRESHOLD_1 * (1 - (SHOCK_THRESHOLD_1_try / 50)) if CUM_SHOCK_THRESHOLD_1_try > 1 else CUM_SHOCK_THRESHOLD_1
-            r1 = df[df['cum-volume/24h'] >CUM_SHOCK_THRESHOLD_1_EFF]
-            if SHOCK_THRESHOLD_1_try>MAX_TRY_SHOCK or len(r1) == 0:
-                r1 = df[df['price'] == df['price'].max()]
-                break
-            if len(r1)<len(df):
-                break
-            SHOCK_THRESHOLD_1_try += 1
-
-        r2 = df[df['volume/24h'] >SHOCK_THRESHOLD_2]
-        r2 = r2[r2['cum-volume/24h'] >CUM_SHOCK_THRESHOLD_2]
-
-
-        power_shock = 0
-        power_cum_shock = 0
-        if len(r1) == 0:
-            r1 = df[df['price'] == df['price'].max()]
-        r1 = float(r1['price'].min())
-        if len(r2) == 0:
-            return r1 , 0, power_shock, power_cum_shock
-        
-        r2_ = r2[r2['price']== r2['price'].min()]
-        r2 = float(r2_['price'].min())
-        power_shock = float(r2_['volume/24h'].min())
-        power_cum_shock = float(r2_['cum-volume/24h'].min())
-        return r1 , r2, power_shock, power_cum_shock
-
+    
 
 
     while True:
         for i in markets:
             last_price = MarketTicker.objects.filter(market=i).order_by('-create_at').values_list('last', flat=True).first()
+            last_price = float(last_price)
             INTERVAL = set_INTERVAL(last_price)
-            maker_fee_rate = MarketStatus.objects.filter(market=i).order_by('-create_at').values_list('maker_fee_rate', flat=True).first()
-            latest_funding_rate = FundingRate.objects.filter(market=i).order_by('-created_at').values_list('max_funding_rate', flat=True).first()
-            fee = (maker_fee_rate + abs(latest_funding_rate)) * 2
             futures_depth = http_client.get_futures_depth(i, LIMIT, INTERVAL)
+            volume_last_24h = MarketTicker.objects.order_by('-create_at').values_list('volume', flat=True).first()
 
             futures_depth = futures_depth['data']
             seller = pd.DataFrame(futures_depth['depth']['asks'],columns=['price', 'volume'])
+            seller['side'] = 'seller'
             buyer = pd.DataFrame(futures_depth['depth']['bids'],columns=['price', 'volume'])
+            buyer['side'] = 'buyer'
+            for j in [seller, buyer]:
+                j['price'] = j['price'].apply(float)
+                j['volume'] = j['volume'].apply(float)
+                j['volume/24h'] = j['volume'] / volume_last_24h
+                j['cum-volume/24h'] = j['volume/24h'].cumsum()
+                j['log_cum-volume/24h'] = j['volume/24h'].cumsum().apply(lambda x: math.log(1+x))
+                j['distance'] = (j['price'] - last_price) / last_price
+                j['distance'] = j['distance'].apply(abs)
+                j['weight'] = 1/ (j['distance'] + 1) 
+            df = pd.concat([seller, buyer])
 
-
-            seller['side'] = 1
-            buyer['side'] = -1
-
-            seller['volume'] = seller['volume'].apply(float)
-            buyer['volume'] = buyer['volume'].apply(float)
-
-            buyer = buyer.sort_values(by=['price'],ascending=False)
-            seller = seller.sort_values(by=['price'],ascending=True)
-
-            volume_last_24h = MarketTicker.objects.order_by('-create_at').values_list('volume', flat=True).first()
-            seller['volume/24h'] = seller['volume'] / volume_last_24h
-            buyer['volume/24h'] = buyer['volume'] / volume_last_24h
-
-            seller['cum-volume/24h'] = seller['volume/24h'].cumsum()
-            buyer['cum-volume/24h'] = buyer['volume/24h'].cumsum()
-
-            r1, r2, sel_power_shock, sel_power_cum_shock = find_resistance(seller)
-            s1, s2, buy_power_shock, buy_power_cum_shock = find_support(buyer)
-
-            buy_price = float(s2 * (1 + BORDER_OFFSET))
-            min_buy_target = float(s2 * (1 + MIN_PROFIT + fee))
-            max_buy_target = float(buy_price * (1 + MAX_PROFIT + fee))
-            buy_target = min(float(r1 * (1 - BORDER_OFFSET)),max_buy_target)
-            if buy_price > 0 and buy_target > 0:
-                buy_rate_profit = (buy_target / buy_price ) - 1 - fee
-            else:
-                buy_rate_profit = 0 
-            buy_stop_loss = float(buy_price * (1 - min(MAX_LOSS,(buy_rate_profit/3))))
-            if (buy_target < min_buy_target) or buy_price ==0:
-                open_buy = False
-                buy_rate_loss = 0
-                buy_rr = 0
-            else:
-                open_buy = True
-                buy_rate_loss = (buy_stop_loss / buy_price) - 1 - fee
-                buy_rr = buy_rate_profit / abs(buy_rate_loss)
-
-            sell_price = float(r2 * (1 - BORDER_OFFSET))
-            min_sell_target = float(r2 * (1 - MIN_PROFIT - fee))
-            max_sel_target = float(buy_price * (1 - MAX_PROFIT - fee))
-            sell_target = max(float(s1 * (1 + BORDER_OFFSET)),max_sel_target)
-            if sell_price > 0 and sell_target > 0:
-                sell_rate_profit = ( sell_price / sell_target ) - 1 - fee
-            else:
-                sell_rate_profit = 0
-            sell_stop_loss = float(sell_price * (1 + min(MAX_LOSS,(sell_rate_profit/3))))
-            if (sell_target > min_sell_target) or sell_price == 0:
-                open_sell = False
-                sell_rate_loss = 0
-                sell_rr = 0
-            else:
-                open_sell = True
-                sell_rate_loss = (sell_price / sell_stop_loss) - 1 - fee
-                sell_rr = sell_rate_profit / abs(sell_rate_loss)
-            
-            open_buy = open_buy * (buy_price < (last_price * (1 - buy_rate_profit) ))
-            open_sell = open_sell * (sell_price<(last_price * (1 + sell_rate_profit)))
-            
-
-            if open_sell and open_buy:
-                shock_sel2buy = sel_power_shock / buy_power_shock
-                shock_buy2sel = buy_power_shock / sel_power_shock
-                cum_shock_sel2buy = sel_power_cum_shock / buy_power_cum_shock
-                cum_shock_buy2sel = buy_power_cum_shock / sel_power_cum_shock
-                rr_sel2buy = sell_rr / buy_rr
-                rr_buy2sel = buy_rr / sell_rr
-                sel_esp = (shock_sel2buy * 4.5) + (cum_shock_sel2buy * 3) + (rr_sel2buy * 1)
-                buy_esp = (shock_buy2sel * 4.5) + (cum_shock_buy2sel * 3) + (rr_buy2sel * 1)
-                sell = sel_esp > (buy_esp * 1.5)
-                buy = buy_esp > (sel_esp * 1.5)
-            else:
-                buy = open_buy
-                sell = open_sell
-            done = False
-            while done == False:
-                try:
-                    AnalizeDepth.objects.update_or_create(
-                        market=i,
-                        defaults={
-                            "support_main": s2,
-                            "support_second": s1,
-                            "resistance_main": r2,
-                            "resistance_second": r1,
-                            "buy_price": buy_price,
-                            "buy_target": buy_target,
-                            "min_buy_target": min_buy_target,
-                            "buy_stop_loss": buy_stop_loss,
-                            "open_buy": open_buy,
-                            "sell_price": sell_price,
-                            "min_sell_target": min_sell_target,
-                            "sell_target": sell_target,
-                            "sell_stop_loss": sell_stop_loss,
-                            "open_sell": open_sell,
-                            "last_price": last_price,
-                            "fee": fee,
-                            "sel_power_shock": sel_power_shock,
-                            "sel_power_cum_shock": sel_power_cum_shock,
-                            "buy_power_shock": buy_power_shock,
-                            "buy_power_cum_shock": buy_power_cum_shock,
-                            "buy_rate_profit": buy_rate_profit,
-                            "buy_rr": buy_rr,
-                            "sell_rate_profit": sell_rate_profit,
-                            "sell_rr": sell_rr,
-                            "buy": buy,
-                            "sell": sell,
-                            "update_at":timezone.now()
-                        }
-                        )
-                    done = True
-                except Exception as e:
-                    time.sleep(delay_by_record)
-                    done = False
-                    continue
+            df = df.to_dict(orient='records')
+            object_list = []
+            datetime = timezone.now()
+            for k in df:
+                object_list.append(OrderBook(
+                    market=i,
+                    side=k['side'],
+                    price=k['price'],
+                    volume=k['volume'],
+                    volume_24h=k['volume/24h'],
+                    cum_volume_24h=k['cum-volume/24h'],
+                    log_cum_volume_24h=k['log_cum-volume/24h'],
+                    weight=k['weight'],
+                    distance=k['distance'],
+                    datetime=datetime,
+                ))
+            OrderBook.objects.bulk_create(object_list)
 
 
         time.sleep(sleep)
 
+def analize():
+    from .models import MarketStatus, FundingRate, OrderBook
+
+    def get_lines(df:pd.DataFrame, last_price:float):
+        std_volume = df['volume/24h'].std()
+        mean_volume = df['volume/24h'].mean()
+        std_cum_volume = df['log_cum-volume/24h'].std()
+        mean_cum_volume = df['log_cum-volume/24h'].mean()
+        shock_volume_1 = std_volume * STD_X_LINE_1
+        shock_cum_volume_1 = std_cum_volume * STD_X_LINE_1
+        shock_volume_2 = std_volume * STD_X_LINE_2
+        shock_cum_volume_2 = std_cum_volume * STD_X_LINE_2
+        
+
+        dic = {'line_1':0, 'line_2':0, 'shock_1':0, "shock_2":0, "shock_cum_1":0, "shock_cum_2":0, "weight_1":0, "weight_2":0}
+
+        df = df[df['volume/24h']>shock_volume_1]
+        df = df[df['log_cum-volume/24h']>shock_cum_volume_1]
+        if len(df) > 0:
+            df_line_1 = df[df['weight']==df['weight'].max()].to_dict(orient='records')[0]
+            dic['line_1'] = float(df_line_1['price'])
+            dic['shock_1'] = float(df_line_1['volume/24h'])
+            dic['shock_cum_1'] = float(df_line_1['log_cum-volume/24h'])
+            dic['weight_1'] = float(df_line_1['weight'])
+
+
+        df = df[df['volume/24h']>shock_volume_2]
+        df = df[df['log_cum-volume/24h']>shock_cum_volume_2]
+        if len(df) > 0:
+            df_line_2 = df[df['weight']==df['weight'].max()].to_dict(orient='records')[0]
+            dic['line_2'] = float(df_line_2['price'])
+            dic['shock_2'] = float(df_line_2['volume/24h'])
+            dic['shock_cum_2'] = float(df_line_2['log_cum-volume/24h'])
+            dic['weight_2'] = float(df_line_2['weight'])
+        return dic
+
+    while True:
+        for i in markets:
+            maker_fee_rate = MarketStatus.objects.filter(market=i).order_by('-create_at').values_list('maker_fee_rate', flat=True).first()
+            latest_funding_rate = FundingRate.objects.filter(market=i).order_by('-created_at').values_list('max_funding_rate', flat=True).first()
+            fee = (maker_fee_rate + abs(latest_funding_rate)) * 2
+
+    return 0
 
 def update_order():
     sleep = 60
@@ -409,7 +291,7 @@ def update_order():
 def modify_position():
     sleep = 20
     delay = 10
-    from .models import Order
+    from .models import Order, AnalizeDepth
     time.sleep(delay)
     while True:
         time.sleep(sleep)
@@ -420,10 +302,26 @@ def modify_position():
             continue
         for i in position:
             order = Order.objects.filter(market=i['market']).order_by('-created_at').first()
+            analize = AnalizeDepth.objects.filter(market=i['market']).order_by('-create_at').first()
             if order is None:
                 http_client.close_futures_position(i['market'])
                 print('close position',i)
                 continue
+
+            unrealized_pnl = float(i['unrealized_pnl'])
+            unrealized_pnl_rate  = unrealized_pnl / float(i['cml_position_value'])
+            if analize is None:
+                if unrealized_pnl > 0:
+                    http_client.close_futures_position(i['market'])
+                    print('close position',i)
+                    continue
+
+            if unrealized_pnl_rate >1:
+                http_client.set_stop_loss_futures_position(i['market'],order.price)
+            elif unrealized_pnl_rate >2:
+                http_client.set_stop_loss_futures_position(i['market'],(order.price*1.01))
+
+
 
             if i['side']=='long' and order.side=='sell':
                 http_client.close_futures_position(i['market'])
@@ -439,11 +337,11 @@ def modify_position():
             if i['take_profit_price']=='0':
                 http_client.set_take_profit_futures_position(i['market'],order.target)
                 print('set take profit',i)
-            if i['leverage'] != '3':
-                http_client.set_leverage_futures_position(i['market'],'3')
+            if i['leverage'] != str(LEVERAGE):
+                http_client.set_leverage_futures_position(i['market'],str(LEVERAGE))
                 print('set leverage',i)
             if i['margin_mode'] == 'cross':
-                http_client.set_leverage_futures_position(i['market'],'3')
+                http_client.set_leverage_futures_position(i['market'],str(LEVERAGE))
                 print('set margin mode',i)
 
 

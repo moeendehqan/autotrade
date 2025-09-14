@@ -1,1 +1,6 @@
 *.pyc
+*/__pycache__/*
+market/__pycache__/*
+.gitignore
+market/migrations/*
+*.cpython-313.pyc

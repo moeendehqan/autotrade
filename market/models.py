@@ -1,8 +1,23 @@
 from django.db import models
+from django.utils import timezone
 
 from django.db import models
 from numpy import power
 
+
+class OrderBook(models.Model):
+    broker = models.CharField(max_length=100, default='coinex')
+    market = models.CharField(max_length=100)
+    side = models.CharField(max_length=100, choices=[('seller', 'seller'), ('buyer', 'buyer')])
+    price = models.FloatField()
+    volume = models.FloatField()
+    volume_24h = models.FloatField()
+    cum_volume_24h = models.FloatField()
+    log_cum_volume_24h = models.FloatField()
+    weight = models.FloatField()
+    distance = models.FloatField()
+    datetime = models.DateTimeField(default=timezone.now)    
+    create_at = models.DateTimeField(auto_now_add=True)
 
 class AnalizeDepth(models.Model):
     # --- اطلاعات کلی ---
