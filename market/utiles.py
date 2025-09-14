@@ -8,6 +8,8 @@ from .coinex import CoinExHTTPClient
 import pandas as pd
 import random
 import math
+from django.db.models import Max
+
 markets = settings.MARKETS
 http_client = CoinExHTTPClient()
 
@@ -121,7 +123,13 @@ def update_futures_depth():
 
 
     while True:
+        timestamp = timezone.now().timestamp()
         for i in markets:
+            duplicate = OrderBook.objects.filter(market=i,timestamp__gt=timestamp-10).exists()
+            if duplicate:
+                time.sleep(delay_by_record)
+                continue
+
             last_price = MarketTicker.objects.filter(market=i).order_by('-create_at').values_list('last', flat=True).first()
             last_price = float(last_price)
             INTERVAL = set_INTERVAL(last_price)
@@ -146,7 +154,6 @@ def update_futures_depth():
 
             df = df.to_dict(orient='records')
             object_list = []
-            datetime = timezone.now()
             for k in df:
                 object_list.append(OrderBook(
                     market=i,
@@ -158,7 +165,7 @@ def update_futures_depth():
                     log_cum_volume_24h=k['log_cum-volume/24h'],
                     weight=k['weight'],
                     distance=k['distance'],
-                    datetime=datetime,
+                    timestamp=timestamp,
                 ))
             OrderBook.objects.bulk_create(object_list)
 
@@ -166,48 +173,68 @@ def update_futures_depth():
         time.sleep(sleep)
 
 def analize():
-    from .models import MarketStatus, FundingRate, OrderBook
+    from .models import MarketStatus, FundingRate, OrderBook, MarketTicker
 
-    def get_lines(df:pd.DataFrame, last_price:float):
-        std_volume = df['volume/24h'].std()
-        mean_volume = df['volume/24h'].mean()
-        std_cum_volume = df['log_cum-volume/24h'].std()
-        mean_cum_volume = df['log_cum-volume/24h'].mean()
-        shock_volume_1 = std_volume * STD_X_LINE_1
-        shock_cum_volume_1 = std_cum_volume * STD_X_LINE_1
-        shock_volume_2 = std_volume * STD_X_LINE_2
-        shock_cum_volume_2 = std_cum_volume * STD_X_LINE_2
+    def get_fee(market:str):
+        maker_fee_rate = MarketStatus.objects.filter(market=market).order_by('-create_at').values_list('maker_fee_rate', flat=True).first()
+        latest_funding_rate = FundingRate.objects.filter(market=market).order_by('-created_at').values_list('max_funding_rate', flat=True).first()
+        fee = (maker_fee_rate * 2) + abs(latest_funding_rate)
+        return fee
+
+    def get_lines(df:pd.DataFrame,side: str):
+        df = df[df['side']==side]
+        std_volume = df['volume_24h'].std()
+        mean_volume = df['volume_24h'].mean()
+        std_cum_volume = df['log_cum_volume_24h'].std()
+        mean_cum_volume = df['log_cum_volume_24h'].mean()
+        shock_volume_1 = mean_volume + std_volume * STD_X_LINE_1
+        shock_cum_volume_1 = mean_cum_volume + std_cum_volume * STD_X_LINE_1
+        shock_volume_2 = mean_volume + std_volume * STD_X_LINE_2
+        shock_cum_volume_2 = mean_cum_volume + std_cum_volume * STD_X_LINE_2
         
 
         dic = {'line_1':0, 'line_2':0, 'shock_1':0, "shock_2":0, "shock_cum_1":0, "shock_cum_2":0, "weight_1":0, "weight_2":0}
 
-        df = df[df['volume/24h']>shock_volume_1]
-        df = df[df['log_cum-volume/24h']>shock_cum_volume_1]
+        df = df[df['volume_24h']>shock_volume_1]
+        df = df[df['log_cum_volume_24h']>shock_cum_volume_1]
         if len(df) > 0:
             df_line_1 = df[df['weight']==df['weight'].max()].to_dict(orient='records')[0]
             dic['line_1'] = float(df_line_1['price'])
-            dic['shock_1'] = float(df_line_1['volume/24h'])
-            dic['shock_cum_1'] = float(df_line_1['log_cum-volume/24h'])
+            dic['shock_1'] = float(df_line_1['volume_24h'])
+            dic['shock_cum_1'] = float(df_line_1['log_cum_volume_24h'])
             dic['weight_1'] = float(df_line_1['weight'])
 
 
-        df = df[df['volume/24h']>shock_volume_2]
-        df = df[df['log_cum-volume/24h']>shock_cum_volume_2]
+        df = df[df['volume_24h']>shock_volume_2]
+        df = df[df['log_cum_volume_24h']>shock_cum_volume_2]
         if len(df) > 0:
             df_line_2 = df[df['weight']==df['weight'].max()].to_dict(orient='records')[0]
             dic['line_2'] = float(df_line_2['price'])
-            dic['shock_2'] = float(df_line_2['volume/24h'])
-            dic['shock_cum_2'] = float(df_line_2['log_cum-volume/24h'])
+            dic['shock_2'] = float(df_line_2['volume_24h'])
+            dic['shock_cum_2'] = float(df_line_2['log_cum_volume_24h'])
             dic['weight_2'] = float(df_line_2['weight'])
         return dic
 
     while True:
         for i in markets:
-            maker_fee_rate = MarketStatus.objects.filter(market=i).order_by('-create_at').values_list('maker_fee_rate', flat=True).first()
-            latest_funding_rate = FundingRate.objects.filter(market=i).order_by('-created_at').values_list('max_funding_rate', flat=True).first()
-            fee = (maker_fee_rate + abs(latest_funding_rate)) * 2
+            timestamp = OrderBook.objects.filter(market=i).aggregate(Max('timestamp'))['timestamp__max']
+            order_book = OrderBook.objects.filter(market=i, timestamp=timestamp)
 
-    return 0
+            if not order_book.exists():
+                continue
+            df = pd.DataFrame(order_book.values())
+            line_buy = get_lines(df,'buyer')
+            line_sell = get_lines(df,'seller')
+            
+
+            print('*'*25)
+            print(line_buy)
+            print(line_sell)
+            time.sleep(10)
+
+
+
+
 
 def update_order():
     sleep = 60

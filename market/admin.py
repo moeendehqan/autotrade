@@ -105,10 +105,10 @@ class FundingRateAdmin(admin.ModelAdmin):
 @admin.register(OrderBook)
 class OrderBookAdmin(admin.ModelAdmin):
     list_display = (
-        "broker", "market", "side", "price", "volume", "volume_24h", "cum_volume_24h", "log_cum_volume_24h", "weight", "distance", "datetime", "create_at"
+        "broker", "market", "side", "price", "volume", "volume_24h", "cum_volume_24h", "log_cum_volume_24h", "weight", "distance", "timestamp", "create_at"
     )
-    list_filter = ("broker", "market", "side", "datetime", "create_at")
-    search_fields = ("broker", "market", "side", "datetime", "create_at")
+    list_filter = ("broker", "market", "side", "timestamp", "create_at")
+    search_fields = ("broker", "market", "side", "timestamp", "create_at")
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):

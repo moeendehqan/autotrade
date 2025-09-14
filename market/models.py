@@ -16,7 +16,7 @@ class OrderBook(models.Model):
     log_cum_volume_24h = models.FloatField()
     weight = models.FloatField()
     distance = models.FloatField()
-    datetime = models.DateTimeField(default=timezone.now)    
+    timestamp = models.IntegerField()
     create_at = models.DateTimeField(auto_now_add=True)
 
 class AnalizeDepth(models.Model):
